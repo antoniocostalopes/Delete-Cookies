@@ -1,0 +1,7 @@
+# Build output - the installer is published as a GitHub Release asset.
+installer/dist/
+*.exe
+
+# OS noise
+.DS_Store
+Thumbs.db
