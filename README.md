@@ -1,143 +1,123 @@
-# Delete Cookies — limpeza diaria de cookies Chromium (Windows)
+# Delete Cookies
 
-Cria uma Scheduled Task que apaga **todos os cookies** dos browsers Chromium
-**todos os dias as 05:30**.
+Limpeza automática e diária dos cookies de todos os browsers baseados em
+Chromium, em Windows.
 
-## Ficheiros
+A solução instala uma tarefa no Programador de Tarefas do Windows que, a uma
+hora fixa (por omissão **05:30**), fecha os browsers e elimina as bases de
+dados de cookies de todos os perfis. No arranque seguinte cada browser cria
+uma base de dados vazia, pelo que o utilizador começa o dia sem rasto de
+navegação e sem sessões abertas.
+
+Não são necessários direitos de administrador: tudo corre na conta do
+utilizador e só toca em ficheiros do seu próprio perfil.
+
+---
+
+## Browsers suportados
+
+| Browser | Localização dos perfis |
+|---|---|
+| Google Chrome | `%LOCALAPPDATA%\Google\Chrome\User Data` |
+| Chromium | `%LOCALAPPDATA%\Chromium\User Data` |
+| Microsoft Edge | `%LOCALAPPDATA%\Microsoft\Edge\User Data` |
+| Brave | `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data` |
+| Vivaldi | `%LOCALAPPDATA%\Vivaldi\User Data` |
+| Opera | `%APPDATA%\Opera Software\Opera Stable` |
+
+Os browsers que não estiverem instalados são ignorados sem erro. Todos os
+perfis são tratados — `Default`, `Profile 1`, `Profile 2`, etc.
+
+---
+
+## O que acontece em cada execução
+
+1. **Fecha os browsers.** O ficheiro `Cookies` é uma base de dados SQLite que
+   fica bloqueada enquanto o processo corre. A tarefa pede o fecho da janela
+   e, se o processo resistir mais de 10 segundos, termina-o. As abas são
+   restauradas no arranque seguinte.
+2. **Elimina as bases de dados de cookies** de cada perfil: `Cookies` e os
+   ficheiros auxiliares `Cookies-journal`, `Cookies-wal` e `Cookies-shm`.
+   São procuradas tanto na localização atual (`<Perfil>\Network\Cookies`)
+   como na usada por versões antigas (`<Perfil>\Cookies`).
+3. **Regista o resultado** em
+   `%LOCALAPPDATA%\ClearChromiumCookies\clear-cookies.log`, com uma linha por
+   ficheiro apagado ou ignorado.
+
+Apenas os cookies são removidos. Histórico, favoritos, palavras-passe
+guardadas, extensões e definições mantêm-se intactos.
+
+---
+
+## Instalação
+
+Descarregar o instalador da
+[última versão](https://github.com/antoniocostalopes/Delete-Cookies/releases/latest)
+e executar.
+
+O assistente pergunta:
+
+- **A hora da limpeza diária** (formato 24 h, por omissão `05:30`).
+- **Que browsers limpar** (por omissão, todos).
+- Se deve **abrir a janela de log** caso algo falhe.
+
+No fim fica registada a tarefa `Clear Chromium Cookies Daily`, visível no
+Programador de Tarefas do Windows, e são criados atalhos no menu Iniciar para
+limpar os cookies manualmente, consultar os logs e desinstalar.
+
+O executável não está assinado digitalmente, pelo que o SmartScreen mostra um
+aviso na primeira execução (*Mais informações* → *Executar mesmo assim*).
+
+### Desinstalação
+
+Pelas *Aplicações e funcionalidades* do Windows. A desinstalação remove a
+tarefa agendada, os scripts e os atalhos.
+
+---
+
+## Comportamento da tarefa agendada
+
+| Situação | Resultado |
+|---|---|
+| PC ligado à hora marcada | A limpeza corre normalmente. |
+| PC desligado ou suspenso | Corre no arranque seguinte (`StartWhenAvailable`). A tarefa nunca acorda o PC. |
+| A correr com bateria | Corre na mesma; não é interrompida se o portátil passar a bateria. |
+| Execução anterior ainda a decorrer | A nova execução é ignorada. |
+| Limpeza acima de 10 minutos | É terminada, para nunca ficar pendurada. |
+
+A tarefa corre com privilégios normais, no contexto do utilizador que a
+instalou. Só é visível no Programador de Tarefas quando este é aberto nessa
+conta ou com privilégios de administrador.
+
+---
+
+## Componentes
 
 | Ficheiro | Função |
 |---|---|
-| `Clear-ChromiumCookies.ps1` | Faz a limpeza: fecha o browser, apaga a base de dados `Cookies` de cada perfil, escreve log. |
-| `Install-CookieCleanupTask.ps1` | Instala/atualiza/remove a Scheduled Task. |
-| `Install.cmd` | Duplo-clique para instalar (chama o installer). |
+| `Clear-ChromiumCookies.ps1` | Faz a limpeza: fecha os browsers, apaga os cookies de cada perfil e escreve o log. |
+| `Install-CookieCleanupTask.ps1` | Regista, atualiza ou remove a tarefa agendada. |
+| `installer/DeleteCookies.nsi` | Instalador NSIS, com assistente, atalhos e desinstalador. |
+| `installer/DeleteCookies.iss` | Instalador equivalente em Inno Setup. |
+| `Install.cmd` | Instalação direta pelos scripts, sem instalador gráfico. |
 
-## Instalar
+A tarefa é criada através do `schtasks.exe` com um ficheiro XML, por ser o
+mecanismo disponível em qualquer versão do Windows — o módulo PowerShell
+`ScheduledTasks` só existe a partir do Windows 8. Os scripts são compatíveis
+com o PowerShell 2.0 que acompanha o Windows 7.
 
-Duplo-clique em `Install.cmd`, ou no PowerShell:
+---
 
-```powershell
-cd "C:\caminho\Delete Cookies"
-.\Install-CookieCleanupTask.ps1
-```
+## Requisitos
 
-Não precisa de administrador: a tarefa corre com a conta do utilizador atual e
-só toca em ficheiros do próprio perfil.
+- Windows 7 ou superior (testado em Windows 10, PowerShell 5.1)
+- Nenhuma dependência externa
+- Sem direitos de administrador
 
-## Opções
+---
 
-```powershell
-# Outra hora
-.\Install-CookieCleanupTask.ps1 -Time 03:30
+## Nota importante
 
-# Só Chrome e Edge
-.\Install-CookieCleanupTask.ps1 -Browser Chrome,Edge
-
-# Não fechar browsers (cookies ficam se o ficheiro estiver bloqueado)
-.\Install-CookieCleanupTask.ps1 -NoStopBrowsers
-
-# Remover tarefa e script instalado
-.\Install-CookieCleanupTask.ps1 -Uninstall
-```
-
-Browsers suportados: `Chrome`, `Chromium`, `Edge`, `Brave`, `Vivaldi`, `Opera`.
-
-## Testar / verificar
-
-```powershell
-Start-ScheduledTask -TaskName 'Clear Chromium Cookies Daily'
-Get-ScheduledTaskInfo -TaskName 'Clear Chromium Cookies Daily'
-Get-Content "$env:LOCALAPPDATA\ClearChromiumCookies\clear-cookies.log" -Tail 30
-```
-
-## Notas
-
-- O ficheiro `Cookies` está bloqueado enquanto o browser corre, por isso o
-  script fecha o browser antes de apagar (sessão/abas são restauradas no
-  arranque seguinte). Com `-NoStopBrowsers` nada é fechado e perfis bloqueados
-  são ignorados.
-- Apagar cookies termina as sessões de todos os sites (logins).
-- A tarefa usa `-StartWhenAvailable`: se o PC estiver desligado/suspenso às
-  05:30, corre no arranque seguinte. Não acorda o PC.
-- O browser recria uma base de dados de cookies vazia no arranque seguinte.
-
-## Instalador Windows (setup.exe)
-
-`installer/DeleteCookies.iss` é um script [Inno Setup 6](https://jrsoftware.org/isinfo.php)
-que empacota tudo num único `setup.exe`.
-
-### Compilar (numa máquina Windows)
-
-```bat
-winget install -e --id JRSoftware.InnoSetup
-installer\build.cmd
-```
-
-Resultado: `installer\dist\DeleteCookies-Setup-1.0.0.exe`.
-
-### O que o setup.exe faz
-
-1. Instala em `%LOCALAPPDATA%\Programs\Delete Cookies` (**sem pedir administrador**).
-2. Pergunta a hora da limpeza (default `05:30`) e quais os browsers.
-3. Registra a Scheduled Task `Clear Chromium Cookies Daily` com essas escolhas.
-4. Cria atalhos no menu Iniciar: *Limpar cookies agora* e *Ver log*.
-5. Opção no fim para correr a limpeza imediatamente.
-
-Desinstalar por Aplicações e funcionalidades do Windows (ou `unins000.exe`)
-remove a tarefa agendada **e** os ficheiros.
-
-### Instalação silenciosa
-
-```bat
-DeleteCookies-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-```
-
-Em modo silencioso são usados os defaults: 05:30 e todos os browsers.
-
-## Instalador NSIS (.exe pronto a usar)
-
-`installer/DeleteCookies.nsi` produz o mesmo instalador que o script Inno, mas
-**compila em macOS e Linux** — não precisa de uma máquina Windows.
-
-```bash
-brew install makensis        # macOS   (Linux: apt install nsis)
-installer/build-nsis.sh
-```
-
-No Windows: `winget install -e --id NSIS.NSIS` e depois `installer\build-nsis.cmd`.
-
-Resultado: `installer/dist/DeleteCookies-Setup-1.0.0.exe` (~96 KB).
-
-O instalador:
-
-1. Instala em `%LOCALAPPDATA%\Programs\Delete Cookies` — sem UAC.
-2. Página de opções: hora (default `05:30`, validada HH:MM) e checkboxes dos browsers.
-3. Registra a tarefa `Clear Chromium Cookies Daily` com essas opções.
-4. Atalhos no menu Iniciar: *Limpar cookies agora*, *Ver log*, *Desinstalar*.
-5. Entrada em Aplicações e funcionalidades; desinstalar remove a tarefa e os ficheiros.
-
-Silencioso (defaults 05:30 + todos os browsers):
-
-```bat
-DeleteCookies-Setup-1.0.0.exe /S
-```
-
-O .exe não está assinado, logo o SmartScreen pode avisar na primeira execução
-("Mais informações" > "Executar mesmo assim").
-
-### Logs e diagnóstico
-
-A página de opções tem a checkbox **"Se ocorrer um erro, abrir a janela com o
-log dos erros"** (ligada por omissão). Se o registo da tarefa falhar:
-
-- a lista de detalhes do instalador abre automaticamente;
-- o log abre numa janela do Bloco de Notas.
-
-Ficheiros de log, dentro da pasta de instalação:
-
-| Ficheiro | Conteúdo |
-|---|---|
-| `install-output.log` | Transcrição completa (stdout + stderr) do PowerShell. Existe mesmo que o PowerShell falhe a arrancar. |
-| `install-task.log` | Log estruturado do script: versão do PowerShell, utilizador, argumentos, XML gerado, saída do `schtasks`, linha que falhou. |
-| `%LOCALAPPDATA%\ClearChromiumCookies\clear-cookies.log` | Log de cada limpeza diária. |
-
-Atalho no menu Iniciar: **Log de instalação**.
+A eliminação dos cookies **termina a sessão em todos os sites**: no dia
+seguinte é preciso voltar a iniciar sessão em cada serviço. É esse o objetivo
+da solução.
